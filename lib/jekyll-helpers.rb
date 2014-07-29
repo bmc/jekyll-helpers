@@ -65,28 +65,26 @@ module JekyllHelpers
   # Returns the process ID of the monitor subprocess (i.e., the result of a
   # fork() call).
   def watch_less
-    config = LessWatcherConfig.new
-    yield config
-    puts "Watching #{config.less_dir} for LESS file updates..."
+    cfg = LessWatcherConfig.new
+    yield cfg
+    puts "Watching #{cfg.less_dir} for LESS updates to: #{cfg.file_pattern}"
 
-    def rebuild(base, relative, config)
+    def rebuild(base, relative, cfg)
       less_path = File.join(base, relative)
       name = File.basename(less_path).sub(/\.less$/, '.css')
-      css_path = File.join(config.css_dir, name)
+      css_path = File.join(File.absolute_path(cfg.css_dir), name)
       begin
-        config.action.call(less_path, css_path, config.compress)
+        cfg.action.call(less_path, css_path, cfg.compress)
       rescue Exception => ex
-        raise if config.abort_on_error
+        raise if cfg.abort_on_error
       end
     end
 
     fork do
-      FSSM.monitor(config.less_dir) do
-        glob config.file_pattern
-
-        update { |base, relative| rebuild base, relative, config }
-        create { |base, relative| rebuild base, relative, config }
-        delete { |base, relative| rebuild base, relative, config }
+      FSSM.monitor(cfg.less_dir, cfg.file_pattern) do
+        update { |base, relative| rebuild base, relative, cfg }
+        create { |base, relative| rebuild base, relative, cfg }
+        delete { |base, relative| rebuild base, relative, cfg }
       end
     end
   end
