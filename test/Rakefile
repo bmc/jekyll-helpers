@@ -4,11 +4,18 @@ require 'jekyll-helpers'
 
 include JekyllHelpers
 
-task :run do
-  pid = watch_less do |w|
-    w.css_dir = 'tmp/css'
-    w.less_dir = 'tmp/less'
-    w.compress = true
-  end
-  Process.wait pid
+CSS_DIR  = "../tmp/css"
+LESS_DIR = "../tmp/less"
+COMPRESS = true
+
+JekyllHelpers::Tasks.new.install do |config|
+  config.less_dir      = LESS_DIR
+  config.css_dir       = CSS_DIR
+  config.less_compress = COMPRESS
+end
+
+task :dummy
+
+task :run => 'jekyll_helpers:watch_less' do
+  Process.wait
 end

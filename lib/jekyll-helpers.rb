@@ -1,20 +1,119 @@
-# Creates tasks in the ":jekyll_helpers" namespace.
+# Rake tasks and helpers for Jekyll.
+#
+# Use the following (at the top of your Rakefile) to install the tasks:
+#
+#    JekyllHelpers::Tasks.new.install do |config|
+#        # set configuration here; see below
+#    end
 
 require 'fssm'
 require 'fileutils'
 
 module JekyllHelpers
-  module Util
-    include FileUtils
+  class Tasks
+    include Rake::DSL
 
-    def less_to_css(less_path, css_path, compress_also=false)
+    def install
+      @config = TasksConfig.new
+      yield @config if block_given?
+
+      @less_util = LessUtil.new(@config)
+
+      make_less_css_rules
+      make_less_watcher
+    end
+
+    private
+
+    def make_less_css_rules
+
+      glob_pattern = "#{@config.less_dir}/**/#{@config.less_file_pattern}"
+      less_files = Dir.glob glob_pattern
+      css_files  = less_files.map do |lf|
+        # Strip the less directory from the beginning. Then, add the CSS
+        # directory and change the extension.
+        s1 = lf.sub @config.less_dir, ""
+        s2 = "#{@config.css_dir}#{s1}"
+        s2.sub /\.less$/, ".css"
+      end
+
+      # Make a task (within the namespace) for generating all the CSS files.
+      namespace :jekyll_helpers do
+        desc "Make all the out of date CSS files from their LESS counterparts."
+        task :css => css_files
+      end
+
+      # Make a task for each less -> css file
+      for less, css in less_files.zip(css_files)
+        desc css
+        file css => [less] do
+          @less_util.less_to_css less, css
+        end
+      end
+    end
+
+    def make_less_watcher
+      desc "Run this task to watch all LESS files for changes."
+      namespace :jekyll_helpers do
+        task :watch_less do
+          # These instance variables don't appear to cross the fork boundary.
+          # However, if we capture them in local variables, we can reference
+          # them via the locals from within the fork block.
+          cfg       = @config
+          less_util = @less_util
+
+          puts "Watching #{cfg.less_dir} for changes: #{cfg.less_file_pattern}"
+          fork do
+
+            FSSM.monitor(cfg.less_dir, cfg.less_file_pattern) do
+              update { |base, rel| less_util.rebuild_from_watch base, rel }
+              create { |base, rel| less_util.rebuild_from_watch base, rel }
+              delete { |base, rel| less_util.rebuild_from_watch base, rel }
+            end
+          end
+        end
+      end
+    end
+
+
+  end
+
+  class TasksConfig
+    attr_accessor :less_dir, :css_dir, :less_file_pattern, :less_compress
+
+    def initialize
+      @less_dir = 'less'
+      @css_dir  = 'css'
+      @less_file_pattern = '[^_]*.less'
+      @less_compress = false
+    end
+  end
+
+  class LessUtil
+    def initialize(tasks_config)
+      @tasks_config = tasks_config
+    end
+
+    def rebuild_from_watch(base, relative)
+      less_path = File.join(base, relative)
+      name = File.basename(less_path).sub(/\.less$/, '.css')
+      css_path = File.join(File.absolute_path(@tasks_config.css_dir), name)
+      begin
+        less_to_css less_path, css_path
+      rescue Exception => ex
+      end
+    end
+
+    def less_to_css(less_path, css_path)
       sh "lessc #{less_path} #{css_path}"
-      if compress_also
+      if @tasks_config.compress
         min_path = css_path.sub(/\.css$/, ".min.css")
         sh "lessc --compress #{less_path} #{min_path}"
       end
     end
 
+    private
+   
     def sh(command, *args)
       cmd = command + args.join(' ')
       puts "+ #{cmd}"
@@ -22,94 +121,7 @@ module JekyllHelpers
         raise "'#{cmd}' failed."
       end
     end
-  end
-
-  class JekyllHelpersTasks
-    include Rake::DSL
-    include Util
-
-    def install_tasks
-      namespace :jekyll_helpers do
-
-        desc "Test"
-        task :test do
-          puts 'test'
-        end
-      end
-    end
-
-  end
-
-  # Watch a directory full of LESS files and convert them to CSS when they
-  # change, using the lessc command (which is presumed to be in the path).
-  # The function yields configuration object to a supplied block, allowing
-  # the following to be set:
-  #
-  # cfg.less_dir       - the directory containing the LESS files. Defaults
-  #                      to "less"
-  # cfg.css_dir        - the directory containing the LESS files. Defaults 
-  #                      to "css"
-  # cfg.file_pattern   - a glob pattern to match the LESS files.
-  #                      Defaults to "*.less"
-  # cfg.compress       - true to generate minified CSS, as well as regular CSS.
-  #                      Defaults to false.
-  # cfg.action         - a Proc (or lambda) to call with each file to rebuild.
-  #                      Default: an internal Proc is used. The Proc should
-  #                      take three parameters: The path to the LESS file,
-  #                      the path to the corresponding CSS file to build,
-  #                      and a boolean flag indicating whether compression
-  #                      should also be done.
-  # cfg.abort_on_error - true to throw an exception on LESS compilation error.
-  #                      Default: false
-  #
-  # Returns the process ID of the monitor subprocess (i.e., the result of a
-  # fork() call).
-  def watch_less
-    cfg = LessWatcherConfig.new
-    yield cfg
-    puts "Watching #{cfg.less_dir} for LESS updates to: #{cfg.file_pattern}"
-
-    def rebuild(base, relative, cfg)
-      less_path = File.join(base, relative)
-      name = File.basename(less_path).sub(/\.less$/, '.css')
-      css_path = File.join(File.absolute_path(cfg.css_dir), name)
-      begin
-        cfg.action.call(less_path, css_path, cfg.compress)
-      rescue Exception => ex
-        raise if cfg.abort_on_error
-      end
-    end
-
-    fork do
-      FSSM.monitor(cfg.less_dir, cfg.file_pattern) do
-        update { |base, relative| rebuild base, relative, cfg }
-        create { |base, relative| rebuild base, relative, cfg }
-        delete { |base, relative| rebuild base, relative, cfg }
-      end
-    end
-  end
-
-  class LessWatcherConfig
-    include Util
-
-    attr_accessor :less_dir, :css_dir, :file_pattern, :compress, :action,
-                  :abort_on_error
-
-    def initialize
-      @less_dir       = "less"
-      @css_dir        = "css"
-      @file_pattern   = "*.less"
-      @compress       = false
-      @action         = method(:less_to_css)
-      @abort_on_error = false
-    end
-
-    def to_s
-      "<LessWatcherConfig: @less_dir=#{@less_dir}, @css_dir=#{@css_dir}>"
-    end
 
   end
 
 end
-
-JekyllHelpers::JekyllHelpersTasks.new.install_tasks
