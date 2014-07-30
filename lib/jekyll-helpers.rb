@@ -106,7 +106,7 @@ module JekyllHelpers
 
     def less_to_css(less_path, css_path)
       sh "lessc #{less_path} #{css_path}"
-      if @tasks_config.compress
+      if @tasks_config.less_compress
         min_path = css_path.sub(/\.css$/, ".min.css")
         sh "lessc --compress #{less_path} #{min_path}"
       end
