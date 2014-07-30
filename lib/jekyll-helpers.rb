@@ -82,10 +82,10 @@ module JekyllHelpers
     attr_accessor :less_dir, :css_dir, :less_file_pattern, :less_compress
 
     def initialize
-      @less_dir = 'less'
-      @css_dir  = 'css'
+      @less_dir          = 'less'
+      @css_dir           = 'stylesheets'
       @less_file_pattern = '[^_]*.less'
-      @less_compress = false
+      @less_compress     = false
     end
   end
 

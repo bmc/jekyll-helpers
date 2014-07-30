@@ -19,10 +19,10 @@ require `rubygems`
 require `jekyll-helpers`
 
 JekyllHelpers::Tasks.new.install do |config|
-  config.less_dir          = 'less'       # directory containing LESS files
-  config.css_dir           = 'css'        # directory where CSS should go
-  config.less_compress     = true         # whether to make compressed CSS, too
-  config.less_file_pattern = '[^_]*.less' # file pattern to match LESS files
+  config.less_dir          = 'less'        # directory containing LESS files
+  config.css_dir           = 'stylesheets' # directory where CSS should go
+  config.less_compress     = true          # whether to make compressed CSS, too
+  config.less_file_pattern = '[^_]*.less'  # file pattern to match LESS files
 end
 ```
 
